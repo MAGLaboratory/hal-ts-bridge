@@ -1,0 +1,21 @@
+{
+	"pidfile": "/tmp/HalTSBr.pid",
+	"data_sources": ["haldor", "daisy", "display", "tweeter", "reporter", "drive"],
+	"boot_check_list": {
+		"TS_Bridge CPU Temp": ["cat /sys/class/thermal/thermal_zone0/temp | tr -d '\\n'"],
+		"TS_Bridge Uptime": ["uptime"],
+		"TS_Bridge Local IP": ["/bin/ip address show eth0 | grep inet | awk '{ print $2 }' | cut -d: -f2 | tr -d '\\n'"],
+		"TS_Bridge Disk Usage": ["df -h | grep -v tmpfs | tail -n +2"],
+		"TS_Bridge Memory Usage": ["free -h"],
+		"TS_Bridge uname": ["uname -a"],
+		"TS_Bridge ifconfig_eth0": ["/bin/ip address show eth0"],
+		"TS_Bridge my_ip": ["/usr/bin/curl -s http://whatismyip.akamai.com/"]
+	},
+	"long_checkup_freq": 100,
+	"long_checkup_leng": 5,
+	"influx_server": "jane.maglab",
+	"influx_port": 8086,
+	"mqtt_broker": "hal.maglab",
+	"mqtt_port": 1883,
+	"mqtt_timeout": 10
+}
