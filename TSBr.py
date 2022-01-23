@@ -54,21 +54,44 @@ class TSB(mqtt.Client):
     
     def on_message(self, client, userdata, msg):
         print("Message received: " + msg.topic)
-        if len(msg.payload.decode('utf-8')):
-            my_msg = json.loads(msg.payload.decode('utf-8'))
-            my_time = float(my_msg['time'])
-            del my_msg['time']
-        else:
-            my_msg = {msg.topic: ''}
-            my_time = time.time()
         body = [{
             "measurement": "maglab",
             "tags": {
                 "topic": msg.topic
             },
-            "fields": self.int_ification(my_msg),
-            "time": int(my_time * 1000000000),
         }]
+        try:
+            decoded = msg.payload.decode('utf-8')
+        except:
+            return
+        if len(decoded):
+            try:
+                my_msg = json.loads(decoded)
+                try:
+                    my_time = float(my_msg['time'])
+                    del my_msg['time']
+                    body[0]["time"] = int(my_time * 1000000000)
+                except:
+                    my_time = time.time()
+                    body[0]["time"] = int(my_time * 1000000000)
+                body[0]["fields"] = self.int_ification(my_msg)
+            except:
+                try:
+                    body[0]["fields"] = {msg.topic : int(decoded)}
+                except:
+                    if decoded.lower() == "true" or decoded == "1":
+                        body[0]["fields"] = {msg.topic : 1}
+                    elif decoded.lower() == "false" or decoded == "0":
+                        body[0]["fields"] = {msg.topic : 0}
+                    else:
+                        body[0]["fields"] = {msg.topic : ''}
+                        print("Message could not be entered: " + decoded)
+                my_time = time.time()
+                body[0]["time"] = int(my_time * 1000000000)
+        else:
+            body[0]["fields"] = {msg.topic: ''}
+            my_time = time.time()
+            body[0]["time"] = int(my_time * 1000000000)
         print(body)
         self.influxDBclient.write_points(body)
         return
@@ -125,9 +148,12 @@ class TSB(mqtt.Client):
         self.influxDBclient = InfluxDBClient(host=self.config.influx_server, port=self.config.influx_port)
         self.influxDBclient.switch_database('maglab')
         self.bootup()
-        
         while self.running:
-            self.loop()
+            try: 
+                while self.running:
+                    self.loop()
+            except:
+                traceback.print_exc()
 
         self.influxDBclient.close()
         self.disconnect()

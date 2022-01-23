@@ -1,6 +1,6 @@
 {
 	"pidfile": "/tmp/HalTSBr.pid",
-	"data_sources": ["haldor", "daisy", "display", "tweeter", "reporter", "drive"],
+	"data_sources": ["haldor", "daisy", "display", "tweeter", "reporter", "fan"],
 	"boot_check_list": {
 		"TS_Bridge CPU Temp": ["cat /sys/class/thermal/thermal_zone0/temp | tr -d '\\n'"],
 		"TS_Bridge Uptime": ["uptime"],
