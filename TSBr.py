@@ -93,7 +93,11 @@ class TSB(mqtt.Client):
             my_time = time.time()
             body[0]["time"] = int(my_time * 1000000000)
         print(body)
-        self.influxDBclient.write_points(body)
+        try:
+            self.influxDBclient.write_points(body)
+        except Exception as err:
+            traceback.print_exc()
+            print(err)
         return
     
     def signal_handler(self, signum, frame):
