@@ -6,9 +6,10 @@ from dataclasses_json import dataclass_json
 from typing import *
 from influxdb import InfluxDBClient
 
-# store checkups to post as one block of checkups
+# daemon inherited class
 class TSBDaemon(Daemon):
     def run(self):
+        # load configuration
         ts_bridge = TSB()
         my_path = os.path.dirname(os.path.abspath(__file__))
         with open(my_path + "/ts_br_config.json", "r") as config:
@@ -16,6 +17,7 @@ class TSBDaemon(Daemon):
 
         ts_bridge.run()
 
+# main class, inheriting paho mqtt 
 class TSB(mqtt.Client):
 
     @dataclass_json
@@ -35,7 +37,8 @@ class TSB(mqtt.Client):
     version = 2022
     topics = []
     pings = 0
-    
+   
+    # paho logging
     def on_log(self, client, userdata, level, buff):
         if level != mqtt.MQTT_LOG_DEBUG:
             print (level)
@@ -44,6 +47,7 @@ class TSB(mqtt.Client):
             traceback.print_exc()
             os._exit(1)
     
+    # subscribe to topics when connected
     def on_connect(self, client, userdata, flags, rc):
         print("MQTT Connected: " + str(rc))
         for data_source in self.config.data_sources:
@@ -52,6 +56,8 @@ class TSB(mqtt.Client):
             client.subscribe(topic)
             print ("Subscribed to " + topic)
     
+    # mqtt message parsing
+    # all messages are converted into integers for grafana
     def on_message(self, client, userdata, msg):
         print("Message received: " + msg.topic)
         body = [{
@@ -60,13 +66,18 @@ class TSB(mqtt.Client):
                 "topic": msg.topic
             },
         }]
+        # decode as UTF-8
         try:
             decoded = msg.payload.decode('utf-8')
         except:
             return
+
+        # is there a message in the topic
         if len(decoded):
             try:
+                # try decoding as json
                 my_msg = json.loads(decoded)
+                # add the time for tsdb
                 try:
                     my_time = float(my_msg['time'])
                     del my_msg['time']
@@ -77,8 +88,10 @@ class TSB(mqtt.Client):
                 body[0]["fields"] = self.int_ification(my_msg)
             except:
                 try:
+                    # decode int-only messages
                     body[0]["fields"] = {msg.topic : int(decoded)}
                 except:
+                    # decode true/false messages
                     if decoded.lower() == "true" or decoded == "1":
                         body[0]["fields"] = {msg.topic : 1}
                     elif decoded.lower() == "false" or decoded == "0":
@@ -89,10 +102,13 @@ class TSB(mqtt.Client):
                 my_time = time.time()
                 body[0]["time"] = int(my_time * 1000000000)
         else:
+            # add time for tsdb
             body[0]["fields"] = {msg.topic: ''}
             my_time = time.time()
             body[0]["time"] = int(my_time * 1000000000)
         print(body)
+
+        # insert into db
         try:
             self.influxDBclient.write_points(body)
         except Exception as err:
@@ -104,14 +120,17 @@ class TSB(mqtt.Client):
         print("Caught a deadly signal!")
         self.running = False
 
+    # message int conversion helper
     def int_ification(self, data):
         intified = {}
         for d_name, d_val in data.items():
+            # within json-type messages, temperatures are integers (/1000)
             if (d_name.endswith("Temp") and type(d_val) is not int):
                 try:
                     intified[d_name] = int(d_val)
                 except:
                     continue
+            # within json-type messages, switches and doors are boolean
             elif ((d_name.endswith("Switch") or d_name.endswith("Door")) and type(d_val) is not int):
                 if type(d_val) is bool:
                     intified[d_name] = int(d_val)
@@ -123,6 +142,13 @@ class TSB(mqtt.Client):
                 intified[d_name] = d_val
         return intified
 
+
+    def on_disconnect(self, userdata, rc):
+        if rc != 0:
+            print("Unexpected diconnection.")
+
+        print("Disconnected.  Attempting reconnection.")
+        self.reconnect()
 
     def bootup(self):
         boot_checks = {}

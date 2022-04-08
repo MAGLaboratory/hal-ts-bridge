@@ -1,0 +1,11 @@
+[Unit]
+Description=MAG Laboratory HAL to TimeSeries Database Bridge
+
+[Service]
+User=brandon
+Group=brandon
+Restart=on-failure
+ExecStart=/home/brandon/hal-ts-bridge/start.sh nodaemon
+
+[Install]
+WantedBy=multi-user.target
