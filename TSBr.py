@@ -143,12 +143,11 @@ class TSB(mqtt.Client):
         return intified
 
 
-    def on_disconnect(self, userdata, rc):
+    def on_disconnect(self, client, userdata, rc):
+        print("Disconnected with: " + str(rc))
         if rc != 0:
-            print("Unexpected diconnection.")
-
-        print("Disconnected.  Attempting reconnection.")
-        self.reconnect()
+            print("Unexpected diconnection.  Attempting reconnection.")
+            self.reconnect()
 
     def bootup(self):
         boot_checks = {}
