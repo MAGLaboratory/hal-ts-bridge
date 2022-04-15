@@ -5,7 +5,9 @@ Description=MAG Laboratory HAL to TimeSeries Database Bridge
 User=brandon
 Group=brandon
 Restart=on-failure
-ExecStart=/home/brandon/hal-ts-bridge/start.sh nodaemon
+RestartSec=30s
+EnvironmentFile=/home/brandon/hal-ts-bridge/hal-ts-bridge.env
+ExecStart=/home/brandon/hal-ts-bridge/hal-ts-bridge.py
 
 [Install]
 WantedBy=multi-user.target

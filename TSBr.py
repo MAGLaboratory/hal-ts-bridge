@@ -4,6 +4,7 @@ from daemon import Daemon
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 from typing import *
+from threading import Event
 from influxdb import InfluxDBClient
 
 # daemon inherited class
@@ -147,7 +148,17 @@ class TSB(mqtt.Client):
         print("Disconnected with: " + str(rc))
         if rc != 0:
             print("Unexpected diconnection.  Attempting reconnection.")
-            self.reconnect()
+            reconnect_count = 0
+            while (reconnect_count < 10):
+                try:
+                    reconnect_count += 1
+                    self.reconnect()
+                    break
+                except:
+                    print("Exception while trying to reconnect.")
+                    traceback.print_exc()
+                    self.tEvent.wait(30)
+
 
     def bootup(self):
         boot_checks = {}
@@ -169,19 +180,30 @@ class TSB(mqtt.Client):
         self.influxDBclient.write_points(body)
 
     def run(self):
-        signal.signal(signal.SIGINT, self.signal_handler)
-        signal.signal(signal.SIGTERM, self.signal_handler)
+        self.tEvent = Event()
         self.running = True
+        startup_count = 0
+        while (startup_count < 10):
+            try:
+                startup_count += 1
+                signal.signal(signal.SIGINT, self.signal_handler)
+                signal.signal(signal.SIGTERM, self.signal_handler)
 
-        self.connect(self.config.mqtt_broker, self.config.mqtt_port, 60)
-        self.influxDBclient = InfluxDBClient(host=self.config.influx_server, port=self.config.influx_port)
-        self.influxDBclient.switch_database('maglab')
-        self.bootup()
+                self.connect(self.config.mqtt_broker, self.config.mqtt_port, 60)
+                self.influxDBclient = InfluxDBClient(host=self.config.influx_server, port=self.config.influx_port)
+                self.influxDBclient.switch_database('maglab')
+                self.bootup()
+                break
+            except:
+                print("Error on bootup.")
+                traceback.print_exc()
+                tEvent.wait(30)
         while self.running:
             try: 
                 while self.running:
                     self.loop()
             except:
+                print("Exception in mqtt loop.")
                 traceback.print_exc()
 
         self.influxDBclient.close()
