@@ -1,4 +1,4 @@
-import time, json, signal, subprocess, urllib, hmac, hashlib, http, traceback, os, datetime
+import time, json, signal, subprocess, urllib, hmac, hashlib, http, traceback, os, datetime, atexit
 import paho.mqtt.client as mqtt
 from daemon import Daemon
 from dataclasses import dataclass
@@ -42,11 +42,19 @@ class TSB(mqtt.Client):
     # paho logging
     def on_log(self, client, userdata, level, buff):
         if level != mqtt.MQTT_LOG_DEBUG:
-            print (level)
-            print(buff)
-        if level == mqtt.MQTT_LOG_ERR:
-            traceback.print_exc()
-            os._exit(1)
+            if level == mqtt.MQTT_LOG_INFO:
+                print("PAHO MQTT INFO: " + buff)
+            elif level == mqtt.MQTT_LOG_NOTICE:
+                print("PAHO MQTT NOTICE: " + buff)
+            elif level == mqtt.MQTT_LOG_WARNING:
+                print("PAHO MQTT WARN: " + buff)
+            else:
+                print("PAHQ MQTT ERROR: " + buff)
+#        if level == mqtt.MQTT_LOG_ERR:
+#            if self.hold_error == 0:
+#                print("Exiting after error.")
+#                traceback.print_exc()
+#                os._exit(1)
     
     # subscribe to topics when connected
     def on_connect(self, client, userdata, flags, rc):
@@ -152,13 +160,17 @@ class TSB(mqtt.Client):
             while (reconnect_count < 10):
                 try:
                     reconnect_count += 1
+                    self.hold_error = 1
                     self.reconnect()
                     break
-                except:
-                    print("Exception while trying to reconnect.")
+                except OSError:
+                    print("Connection error while trying to reconnect.")
                     traceback.print_exc()
+                    print("Waiting to restart")
                     self.tEvent.wait(30)
-
+            if reconnect_count == 10:
+                print("Too many reconnect tries.  Exiting.")
+                os._exit(1)
 
     def bootup(self):
         boot_checks = {}
@@ -182,30 +194,51 @@ class TSB(mqtt.Client):
     def run(self):
         self.tEvent = Event()
         self.running = True
+        self.hold_error = 0
         startup_count = 0
         while (startup_count < 10):
             try:
                 startup_count += 1
+                self.hold_error = 1
                 signal.signal(signal.SIGINT, self.signal_handler)
                 signal.signal(signal.SIGTERM, self.signal_handler)
 
                 self.connect(self.config.mqtt_broker, self.config.mqtt_port, 60)
+                atexit.register(self.disconnect)
                 self.influxDBclient = InfluxDBClient(host=self.config.influx_server, port=self.config.influx_port)
+                atexit.register(self.influxDBclient.close)
                 self.influxDBclient.switch_database('maglab')
                 self.bootup()
                 break
-            except:
-                print("Error on bootup.")
+            except OSError:
+                print("Error connecting on bootup.")
                 traceback.print_exc()
-                tEvent.wait(30)
-        while self.running:
-            try: 
-                while self.running:
-                    self.loop()
+                print("Waiting to reconnect.")
+                self.tEvent.wait(30)
+
+        if startup_count == 10:
+            print("Too many startup tries.  Exiting.")
+            os._exit(1)
+        self.hold_error = 0
+        print("Startup success.")
+        self.reconnect_me = False
+        self.inner_reconnect_try = 0
+        while self.running and (self.inner_reconnect_try < 10):
+            try:
+                if self.reconnect_me == True:
+                    self.reconnect()
+                    self.reconnect_me = False
+                self.loop()
+                self.inner_reconnect_try = 0
+            except (socket.timeout, TimeoutError, ConnectionError):
+                self.inner_reconnect_try += 1
+                self.reconnect_me = True
             except:
                 print("Exception in mqtt loop.")
                 traceback.print_exc()
+                print("Exiting.")
+                exit(2)
+        if self.inner_reconnect_try == 10:
+            exit(1)
 
-        self.influxDBclient.close()
-        self.disconnect()
         exit(0)
