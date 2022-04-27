@@ -11,6 +11,7 @@
 		"TS_Bridge ifconfig_eth0": ["/bin/ip address show eth0"],
 		"TS_Bridge my_ip": ["/usr/bin/curl -s http://whatismyip.akamai.com/"]
 	},
+	"loglevel": "INFO",
 	"long_checkup_freq": 100,
 	"long_checkup_leng": 5,
 	"influx_server": "jane.maglab",
