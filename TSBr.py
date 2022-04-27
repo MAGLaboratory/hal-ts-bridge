@@ -1,4 +1,4 @@
-import time, json, signal, subprocess, urllib, hmac, hashlib, http, traceback, os, datetime, atexit
+import time, json, signal, subprocess, urllib, hmac, hashlib, http, traceback, os, datetime, atexit, logging
 import paho.mqtt.client as mqtt
 from daemon import Daemon
 from dataclasses import dataclass
@@ -43,32 +43,27 @@ class TSB(mqtt.Client):
     def on_log(self, client, userdata, level, buff):
         if level != mqtt.MQTT_LOG_DEBUG:
             if level == mqtt.MQTT_LOG_INFO:
-                print("PAHO MQTT INFO: " + buff)
+                logging.info("PAHO MQTT INFO: " + buff)
             elif level == mqtt.MQTT_LOG_NOTICE:
-                print("PAHO MQTT NOTICE: " + buff)
+                logging.info("PAHO MQTT NOTICE: " + buff)
             elif level == mqtt.MQTT_LOG_WARNING:
-                print("PAHO MQTT WARN: " + buff)
+                logging.warning("PAHO MQTT WARN: " + buff)
             else:
-                print("PAHQ MQTT ERROR: " + buff)
-#        if level == mqtt.MQTT_LOG_ERR:
-#            if self.hold_error == 0:
-#                print("Exiting after error.")
-#                traceback.print_exc()
-#                os._exit(1)
+                logging.error("PAHQ MQTT ERROR: " + buff)
     
     # subscribe to topics when connected
     def on_connect(self, client, userdata, flags, rc):
-        print("MQTT Connected: " + str(rc))
+        logging.info("MQTT Connected: " + str(rc))
         for data_source in self.config.data_sources:
             topic = data_source + "/#"
             self.topics += topic
             client.subscribe(topic)
-            print ("Subscribed to " + topic)
+            logging.info("Subscribed to " + topic)
     
     # mqtt message parsing
     # all messages are converted into integers for grafana
     def on_message(self, client, userdata, msg):
-        print("Message received: " + msg.topic)
+        logging.info("Message received: " + msg.topic)
         body = [{
             "measurement": "maglab",
             "tags": {
@@ -107,7 +102,7 @@ class TSB(mqtt.Client):
                         body[0]["fields"] = {msg.topic : 0}
                     else:
                         body[0]["fields"] = {msg.topic : ''}
-                        print("Message could not be entered: " + decoded)
+                        logging.warn("Message could not be entered: " + decoded)
                 my_time = time.time()
                 body[0]["time"] = int(my_time * 1000000000)
         else:
@@ -115,14 +110,14 @@ class TSB(mqtt.Client):
             body[0]["fields"] = {msg.topic: ''}
             my_time = time.time()
             body[0]["time"] = int(my_time * 1000000000)
-        print(body)
+        logging.debug(body)
 
         # insert into db
         try:
             self.influxDBclient.write_points(body)
         except Exception as err:
-            traceback.print_exc()
-            print(err)
+            logging.error(err)
+            logging.error(traceback.format_exc())
         return
     
     def signal_handler(self, signum, frame):
@@ -153,23 +148,22 @@ class TSB(mqtt.Client):
 
 
     def on_disconnect(self, client, userdata, rc):
-        print("Disconnected with: " + str(rc))
+        logging.info("Disconnected with: " + str(rc))
         if rc != 0:
-            print("Unexpected diconnection.  Attempting reconnection.")
+            logging.error("Unexpected diconnection.  Attempting reconnection.")
             reconnect_count = 0
             while (reconnect_count < 10):
                 try:
                     reconnect_count += 1
-                    self.hold_error = 1
                     self.reconnect()
                     break
                 except OSError:
-                    print("Connection error while trying to reconnect.")
-                    traceback.print_exc()
-                    print("Waiting to restart")
+                    logging.error("Connection error while trying to reconnect.")
+                    logging.error(traceback.format_exc())
+                    logging.error("Waiting to restart")
                     self.tEvent.wait(30)
             if reconnect_count == 10:
-                print("Too many reconnect tries.  Exiting.")
+                logging.critical("Too many reconnect tries.  Exiting.")
                 os._exit(1)
 
     def bootup(self):
@@ -188,18 +182,16 @@ class TSB(mqtt.Client):
             "fields": intey,
             "time": time.time_ns(),
         }]
-        print(body)
+        logging.debug(body)
         self.influxDBclient.write_points(body)
 
     def run(self):
         self.tEvent = Event()
         self.running = True
-        self.hold_error = 0
         startup_count = 0
         while (startup_count < 10):
             try:
                 startup_count += 1
-                self.hold_error = 1
                 signal.signal(signal.SIGINT, self.signal_handler)
                 signal.signal(signal.SIGTERM, self.signal_handler)
 
@@ -211,16 +203,15 @@ class TSB(mqtt.Client):
                 self.bootup()
                 break
             except OSError:
-                print("Error connecting on bootup.")
-                traceback.print_exc()
-                print("Waiting to reconnect.")
+                logging.error("Error connecting on bootup.")
+                logging.error(traceback.format_exc())
+                logging.error("Waiting to reconnect.")
                 self.tEvent.wait(30)
 
         if startup_count == 10:
-            print("Too many startup tries.  Exiting.")
+            logging.critical("Too many startup tries.  Exiting.")
             os._exit(1)
-        self.hold_error = 0
-        print("Startup success.")
+        logging.info("Startup success.")
         self.reconnect_me = False
         self.inner_reconnect_try = 0
         while self.running and (self.inner_reconnect_try < 10):
@@ -233,10 +224,11 @@ class TSB(mqtt.Client):
             except (socket.timeout, TimeoutError, ConnectionError):
                 self.inner_reconnect_try += 1
                 self.reconnect_me = True
+                logging.error("MQTT loop error.  Attempting to reconnect: " + inner_reconnect_try)
             except:
-                print("Exception in mqtt loop.")
-                traceback.print_exc()
-                print("Exiting.")
+                logging.critical("Exception in mqtt loop.")
+                logging.critical(traceback.format_exc())
+                logging.critical("Exiting.")
                 exit(2)
         if self.inner_reconnect_try == 10:
             exit(1)
