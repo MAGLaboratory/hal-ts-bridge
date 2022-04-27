@@ -41,15 +41,16 @@ class TSB(mqtt.Client):
    
     # paho logging
     def on_log(self, client, userdata, level, buff):
-        if level != mqtt.MQTT_LOG_DEBUG:
-            if level == mqtt.MQTT_LOG_INFO:
-                logging.info("PAHO MQTT INFO: " + buff)
-            elif level == mqtt.MQTT_LOG_NOTICE:
-                logging.info("PAHO MQTT NOTICE: " + buff)
-            elif level == mqtt.MQTT_LOG_WARNING:
-                logging.warning("PAHO MQTT WARN: " + buff)
-            else:
-                logging.error("PAHQ MQTT ERROR: " + buff)
+        if level == mqtt.MQTT_LOG_DEBUG:
+            logging.debug("PAHQ MQTT DEBUG: " + buff)
+        elif level == mqtt.MQTT_LOG_INFO:
+            logging.info("PAHO MQTT INFO: " + buff)
+        elif level == mqtt.MQTT_LOG_NOTICE:
+            logging.info("PAHO MQTT NOTICE: " + buff)
+        elif level == mqtt.MQTT_LOG_WARNING:
+            logging.warning("PAHO MQTT WARN: " + buff)
+        else:
+            logging.error("PAHQ MQTT ERROR: " + buff)
     
     # subscribe to topics when connected
     def on_connect(self, client, userdata, flags, rc):
@@ -192,6 +193,8 @@ class TSB(mqtt.Client):
         while (startup_count < 10):
             try:
                 startup_count += 1
+                logging.basicConfig(level="WARNING")
+
                 signal.signal(signal.SIGINT, self.signal_handler)
                 signal.signal(signal.SIGTERM, self.signal_handler)
 
