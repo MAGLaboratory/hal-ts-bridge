@@ -29,12 +29,12 @@ class TSB(mqtt.Client):
         boot_check_list: Dict[str, List[str]]
         influx_server: str
         influx_port: int
-        loglevel: str
         long_checkup_freq: int
         long_checkup_leng: int
         mqtt_broker: str
         mqtt_port: int
         mqtt_timeout: int
+        loglevel: Optional[str] = None
 
     version = 2022
     topics = []
@@ -194,10 +194,13 @@ class TSB(mqtt.Client):
         while (startup_count < 10):
             try:
                 startup_count += 1
-                if self.config.loglevel and type(logging.getLevelName(self.config.loglevel)) is int:
-                    logging.basicConfig(level=self.config.loglevel)
-                else:
-                    logging.warning("Log level not configured.  Defaulting to WARNING.")
+                try:
+                    if type(logging.getLevelName(self.config.loglevel)) is int:
+                        logging.basicConfig(level=self.config.loglevel)
+                    else:
+                        logging.warning("Log level not configured.  Defaulting to WARNING.")
+                except KeyError:
+                    logging.warning("Log level not configured.  Defaulting to WARNING.  Caught: " + e)
 
                 signal.signal(signal.SIGINT, self.signal_handler)
                 signal.signal(signal.SIGTERM, self.signal_handler)
